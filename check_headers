@@ -1,0 +1,48 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use feature qw(say state);
+use utf8;
+
+use Getopt::Long qw(:config gnu_getopt);
+use File::Find;
+use File::Slurp qw(read_file);
+
+my $dir = '';
+my $verbose = 0;
+
+GetOptions(
+   'dir|d=s'    => sub { if ( -d $_[1]  ) { $dir = $_[1] } else { die(qq(Incorrect path: '$_[1]'\n)) } },
+   'verbose|v+' => \$verbose,
+) or die "Incorrect usage!\n";
+
+die("You should specify a directory for cheking.\n") if ! -d $dir;
+
+sub remove_comments {
+   $_[0] =~ s#/\*[^*]*\*+([^/*][^*]*\*+)*/|//([^\\]|[^\n][\n]?)*?\n|("(\\.|[^"\\])*"|'(\\.|[^'\\])*'|.[^/"'\\]*)#defined $3 ? $3 : ""#gse;
+}
+
+
+my @headers;
+find(sub { push @headers, $File::Find::name if m/\.h$/ }, $dir);
+
+foreach (@headers) {
+   my $f = read_file($_);
+   remove_comments($f);
+
+   if ($f =~ m/^\s*
+      \#[ \t]*ifndef[ \t]+(?<ndef>\w+)\s+
+      \#[ \t]*define[ \t]+(?<def>\w+)
+      /x) {
+      my ($ndef, $def) = ($+{ndef}, $+{def});
+      if ($ndef ne $def) {
+         say "ERRFILE: $_\n\tNDEF: $ndef\n\t DEF: $def\n\n";
+      } elsif ($verbose == 2) {
+         say "OK $_ $def";
+      }
+   } else {
+         say STDERR "W/O GUARDS: $_" if $verbose == 1;
+   }
+}
+
